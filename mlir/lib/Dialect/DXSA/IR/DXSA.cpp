@@ -45,6 +45,83 @@ LogicalResult DclGlobalFlags::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Custom assembly format helpers
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Parse a register identifier of the form `<prefix><N>` (e.g. `x0`, `r3`).
+/// The whole identifier must be a single token (no whitespace between
+/// prefix and number).
+ParseResult parseRegisterName(OpAsmParser &parser, StringRef registerPrefix,
+                              IntegerAttr &registerIndex) {
+  StringRef name;
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseKeyword(&name))
+    return failure();
+  if (!name.consume_front(registerPrefix))
+    return parser.emitError(loc)
+           << "expected register prefix '" << registerPrefix << "'";
+  unsigned value;
+  if (name.getAsInteger(10, value))
+    return parser.emitError(loc) << "expected integer after register prefix '"
+                                 << registerPrefix << "'";
+  registerIndex = parser.getBuilder().getI32IntegerAttr(value);
+  return success();
+}
+
+/// Print a register identifier of the form `<prefix><N>`.
+void printRegisterName(OpAsmPrinter &printer, StringRef registerPrefix,
+                       IntegerAttr registerIndex) {
+  printer << registerPrefix << registerIndex.getInt();
+}
+
+//===----------------------------------------------------------------------===//
+// Custom parser/printer for indexable temp registers (dcl_indexable_temp op)
+//===----------------------------------------------------------------------===//
+
+ParseResult parseIndexableTempRegister(OpAsmParser &parser,
+                                       IntegerAttr &registerIndex) {
+  return parseRegisterName(parser, "x", registerIndex);
+}
+
+void printIndexableTempRegister(OpAsmPrinter &printer, Operation *op,
+                                IntegerAttr registerIndex) {
+  printRegisterName(printer, "x", registerIndex);
+}
+
+//===----------------------------------------------------------------------===//
+// Custom parser/printer for contiguous component masks (xyzw-style)
+//===----------------------------------------------------------------------===//
+
+static constexpr StringRef contiguousMasks[] = {"x", "xy", "xyz", "xyzw"};
+
+ParseResult parseContiguousMask(OpAsmParser &parser,
+                                IntegerAttr &numComponents) {
+  StringRef name;
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseKeyword(&name))
+    return failure();
+  for (auto [i, contiguousMask] : llvm::enumerate(contiguousMasks)) {
+    if (name == contiguousMask) {
+      numComponents = parser.getBuilder().getI32IntegerAttr(i + 1);
+      return success();
+    }
+  }
+  return parser.emitError(loc) << "expected one of 'x', 'xy', 'xyz', 'xyzw'";
+}
+
+void printContiguousMask(OpAsmPrinter &printer, Operation *op,
+                         IntegerAttr numComponents) {
+  unsigned n = numComponents.getInt();
+  assert(n >= 1 && n <= std::size(contiguousMasks) &&
+         "num_components out of range");
+  printer << contiguousMasks[n - 1];
+}
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 

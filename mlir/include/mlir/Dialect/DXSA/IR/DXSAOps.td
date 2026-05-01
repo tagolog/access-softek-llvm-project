@@ -158,4 +158,15 @@ def DXSA_DclTemps : DXSA_Op<"dcl_temps"> {
   let assemblyFormat = [{ $count attr-dict }];
 }
 
+def DXSA_DclIndexableTemp : DXSA_Op<"dcl_indexable_temp"> {
+  let summary = "declare a temporary register";
+  let arguments = (ins I32Attr:$register_index,
+      ConfinedAttr<I32Attr, [IntPositive, IntMaxValue<4096>]>:$register_count,
+      ConfinedAttr<I32Attr, [IntMinValue<1>, IntMaxValue<4>]>:$num_components);
+  let assemblyFormat = [{
+    custom<IndexableTempRegister>($register_index) `[` $register_count `]` `,`
+    custom<ContiguousMask>($num_components) attr-dict
+  }];
+}
+
 #endif // DXSA_OPS

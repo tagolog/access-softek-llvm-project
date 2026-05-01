@@ -516,6 +516,15 @@ public:
                                   builder.getI32IntegerAttr(count));
   }
 
+  Instruction buildDclIndexableTemp(uint32_t registerIndex,
+                                    uint32_t registerCount,
+                                    uint32_t numComponents, Location loc) {
+    return dxsa::DclIndexableTemp::create(
+        builder, loc, builder.getI32IntegerAttr(registerIndex),
+        builder.getI32IntegerAttr(registerCount),
+        builder.getI32IntegerAttr(numComponents));
+  }
+
 private:
   MLIRContext *context;
   ModuleOp module;
@@ -831,6 +840,40 @@ public:
     return builder.buildDclTemps(count, loc);
   }
 
+  FailureOr<Instruction> parseDclIndexableTemp(Location loc) {
+    auto registerIndexToken = parseToken();
+    if (failed(registerIndexToken))
+      return failure();
+    auto registerCountToken = parseToken();
+    if (failed(registerCountToken))
+      return failure();
+    auto numComponentsToken = parseToken();
+    if (failed(numComponentsToken))
+      return failure();
+
+    auto registerCount = *registerCountToken;
+    if (registerCount == 0) {
+      emitError(getLocation(), "indexable temp array size cannot be zero");
+      return failure();
+    }
+    if (registerCount > 4096) {
+      emitError(getLocation(), "invalid indexable temp array size: ")
+          << registerCount << " (max 4096)";
+      return failure();
+    }
+
+    auto numComponents = *numComponentsToken;
+    if (numComponents < 1 || numComponents > 4) {
+      emitError(getLocation(), "indexable temp num components must be in 1..4, "
+                               "got ")
+          << numComponents;
+      return failure();
+    }
+
+    return builder.buildDclIndexableTemp(*registerIndexToken, registerCount,
+                                         numComponents, loc);
+  }
+
   OptionalParseResult parseDclInstruction(uint32_t opcodeToken, Location loc,
                                           Instruction &out) {
     FailureOr<Instruction> result;
@@ -840,6 +883,9 @@ public:
       break;
     case D3D10_SB_OPCODE_DCL_TEMPS:
       result = parseDclTemps(loc);
+      break;
+    case D3D10_SB_OPCODE_DCL_INDEXABLE_TEMP:
+      result = parseDclIndexableTemp(loc);
       break;
     default:
       return std::nullopt;
